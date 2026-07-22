@@ -17,11 +17,14 @@
    ============================================================ */
 
 window.FIREBASE_CONFIG = {
-  apiKey:      "PASTE_API_KEY",
-  authDomain:  "PASTE_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://PASTE_PROJECT_ID-default-rtdb.firebaseio.com",
-  projectId:   "PASTE_PROJECT_ID",
-  appId:       "PASTE_APP_ID"
+  apiKey:            "AIzaSyDfgdT8E5xWrioDLLMA7gb61PYrDz4SGEA",
+  authDomain:        "apc-idea-board.firebaseapp.com",
+  databaseURL:       "https://apc-idea-board-default-rtdb.firebaseio.com",
+  projectId:         "apc-idea-board",
+  storageBucket:     "apc-idea-board.firebasestorage.app",
+  messagingSenderId: "687157125423",
+  appId:             "1:687157125423:web:1e13add94a8b40809901da",
+  measurementId:     "G-TYSCC8YQ5D"
 };
 
 /* Public URL where the audience submit page is hosted.
