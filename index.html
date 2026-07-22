@@ -33,14 +33,22 @@
     label{font-size:.85rem;color:var(--muted);font-weight:600;display:flex;justify-content:space-between;align-items:baseline;}
     .count{font-variant-numeric:tabular-nums;color:var(--muted-2);font-weight:500;}
     .count.warn{color:var(--green-bright);}
-    textarea,input{
+    textarea,input,select{
       width:100%;font-family:inherit;font-size:16px;color:var(--white);
       background:var(--charcoal-3);border:1px solid var(--line);border-radius:14px;
       padding:14px 15px;resize:none;outline:none;transition:border-color .15s,box-shadow .15s;
     }
     textarea{min-height:130px;line-height:1.45;}
-    textarea:focus,input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(177,182,51,.22);}
+    textarea:focus,input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(177,182,51,.22);}
     textarea::placeholder,input::placeholder{color:var(--muted-2);}
+    /* native caret + readable options in both the closed control and the dropdown */
+    select{
+      appearance:none;-webkit-appearance:none;cursor:pointer;
+      padding-right:42px;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath fill='none' stroke='%23d7dc6a' stroke-width='2' d='M1 1l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 16px center;
+    }
+    select option{color:#111;background:#fff;}
     button{
       font-family:inherit;font-size:1.08rem;font-weight:700;color:#20220f;
       background:linear-gradient(180deg,var(--green-bright),var(--green));
@@ -89,6 +97,14 @@
           placeholder="e.g. Every Monday I rebuild the same status report by hand from three systems…"></textarea>
       </div>
       <div>
+        <label for="dept">Your department <span style="font-weight:500;color:var(--muted-2)">(optional)</span></label>
+        <select id="dept">
+          <option value="">— Choose your department —</option>
+          <option value="__other__">＋ Add my department…</option>
+        </select>
+        <input id="deptOther" maxlength="60" placeholder="Type your department name" hidden style="margin-top:10px;" />
+      </div>
+      <div>
         <label for="name">Your name <span style="font-weight:500;color:var(--muted-2)">(optional)</span></label>
         <input id="name" maxlength="40" placeholder="Leave blank to stay anonymous" />
       </div>
@@ -106,23 +122,28 @@
   <script src="./firebase-config.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-    import { getDatabase, ref, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+    import { getDatabase, ref, push, onValue, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
     const cfg = window.FIREBASE_CONFIG || {};
     const configured = cfg.apiKey && cfg.apiKey.indexOf("PASTE_") !== 0 &&
                        cfg.databaseURL && cfg.databaseURL.indexOf("PASTE_") === -1;
 
-    const form   = document.getElementById("ideaForm");
-    const textEl = document.getElementById("text");
-    const nameEl = document.getElementById("name");
-    const sendEl = document.getElementById("send");
-    const countEl= document.getElementById("count");
-    const tally  = document.getElementById("tally");
-    const toast  = document.getElementById("toast");
-    const notice = document.getElementById("notice");
+    const form    = document.getElementById("ideaForm");
+    const textEl  = document.getElementById("text");
+    const nameEl  = document.getElementById("name");
+    const deptEl  = document.getElementById("dept");
+    const deptOtherEl = document.getElementById("deptOther");
+    const sendEl  = document.getElementById("send");
+    const countEl = document.getElementById("count");
+    const tally   = document.getElementById("tally");
+    const toast   = document.getElementById("toast");
+    const notice  = document.getElementById("notice");
+    const OTHER    = "__other__";
 
-    // Remember the name between submissions on this device.
+    // Remember the name & department between submissions on this device.
     try { nameEl.value = localStorage.getItem("ideaName") || ""; } catch (e) {}
+    let savedDept = "";
+    try { savedDept = localStorage.getItem("ideaDept") || ""; } catch (e) {}
 
     function showToast(msg, isErr) {
       toast.textContent = msg;
@@ -145,22 +166,71 @@
     } else {
       const db = getDatabase(initializeApp(cfg));
       const ideasRef = ref(db, "ideas");
+      const deptsRef = ref(db, "departments");
       let sent = 0;
+
+      /* ---- department dropdown, fed live from the deck's booking slide ----
+         The organiser's deck publishes its department list into Firebase; we
+         mirror it here. "Add my department…" lets someone type one that isn't
+         listed — it's pushed up so it shows for the deck (slide 53) and the
+         next phone. De-duplicated case-insensitively; display casing kept. */
+      const deptNames = new Map(); // lowercased -> display name
+      function renderDeptOptions() {
+        const cur = deptEl.value; // preserve the live selection across updates
+        const names = Array.from(deptNames.values()).sort((a, b) => a.localeCompare(b));
+        deptEl.innerHTML = "";
+        deptEl.appendChild(new Option("— Choose your department —", ""));
+        names.forEach((n) => deptEl.appendChild(new Option(n, n)));
+        deptEl.appendChild(new Option("＋ Add my department…", OTHER));
+        if (cur && (cur === OTHER || deptNames.has(cur.toLowerCase()))) deptEl.value = cur;
+        else if (savedDept && deptNames.has(savedDept.toLowerCase())) deptEl.value = savedDept;
+      }
+      renderDeptOptions();
+      onValue(deptsRef, (snap) => {
+        const val = snap.val() || {};
+        deptNames.clear();
+        Object.keys(val).forEach((k) => {
+          const n = val[k] && val[k].name ? String(val[k].name).trim() : "";
+          if (n && !deptNames.has(n.toLowerCase())) deptNames.set(n.toLowerCase(), n);
+        });
+        renderDeptOptions();
+      });
+      deptEl.addEventListener("change", () => {
+        const other = deptEl.value === OTHER;
+        deptOtherEl.hidden = !other;
+        if (other) { deptOtherEl.value = ""; deptOtherEl.focus(); }
+      });
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const text = textEl.value.trim();
         const name = nameEl.value.trim();
+        const dept = (deptEl.value === OTHER ? deptOtherEl.value : deptEl.value).trim();
         if (!text) { textEl.focus(); return; }
 
         sendEl.disabled = true;
         sendEl.textContent = "Adding…";
-        try { localStorage.setItem("ideaName", name); } catch (e2) {}
+        try { localStorage.setItem("ideaName", name); localStorage.setItem("ideaDept", dept); } catch (e2) {}
 
         try {
+          // a newly typed department joins the shared list (for the deck + other phones)
+          if (dept && !deptNames.has(dept.toLowerCase())) {
+            try { await push(deptsRef, { name: dept }); } catch (e3) {}
+            deptNames.set(dept.toLowerCase(), dept); savedDept = dept; renderDeptOptions();
+            deptEl.value = dept; deptOtherEl.hidden = true;
+          }
+
           const entry = { text, ts: serverTimestamp() };
           if (name) entry.name = name;
-          await push(ideasRef, entry);
+          if (dept) entry.dept = dept;
+          try {
+            await push(ideasRef, entry);
+          } catch (errPush) {
+            // Never lose an idea: if the database rules haven't been updated to
+            // accept the department field yet, resend with just the essentials.
+            if (entry.dept) await push(ideasRef, { text, ts: serverTimestamp(), ...(name ? { name } : {}) });
+            else throw errPush;
+          }
 
           sent++;
           textEl.value = "";
