@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1F2124" />
+  <title>Add an Idea · APC Applied AI Workshop</title>
+  <style>
+    :root{
+      --charcoal-1:#1F2124; --charcoal-2:#292A2C; --charcoal-3:#33373D;
+      --green:#b1b633; --green-bright:#d7dc6a; --green-deep:#989b2c;
+      --white:#fff; --muted:rgba(255,255,255,.72); --muted-2:rgba(255,255,255,.55);
+      --line:rgba(255,255,255,.14); --red:#e06666; --radius:16px;
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+    html,body{margin:0;}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+      background:radial-gradient(1200px 600px at 50% -10%,#2b2e31,#1F2124 60%);
+      color:var(--white);
+      min-height:100dvh;
+      padding:max(20px,env(safe-area-inset-top)) 18px calc(20px + env(safe-area-inset-bottom));
+      display:flex;flex-direction:column;align-items:center;
+    }
+    .wrap{width:100%;max-width:520px;margin:auto 0;}
+    header{text-align:center;margin-bottom:22px;}
+    .kicker{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--green-deep);font-weight:700;}
+    h1{font-size:1.7rem;line-height:1.15;margin:.35em 0 .25em;}
+    h1 em{color:var(--green-bright);font-style:normal;}
+    .sub{color:var(--muted);font-size:1rem;line-height:1.4;margin:0;}
+
+    form{display:flex;flex-direction:column;gap:14px;}
+    label{font-size:.85rem;color:var(--muted);font-weight:600;display:flex;justify-content:space-between;align-items:baseline;}
+    .count{font-variant-numeric:tabular-nums;color:var(--muted-2);font-weight:500;}
+    .count.warn{color:var(--green-bright);}
+    textarea,input{
+      width:100%;font-family:inherit;font-size:16px;color:var(--white);
+      background:var(--charcoal-3);border:1px solid var(--line);border-radius:14px;
+      padding:14px 15px;resize:none;outline:none;transition:border-color .15s,box-shadow .15s;
+    }
+    textarea{min-height:130px;line-height:1.45;}
+    textarea:focus,input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(177,182,51,.22);}
+    textarea::placeholder,input::placeholder{color:var(--muted-2);}
+    button{
+      font-family:inherit;font-size:1.08rem;font-weight:700;color:#20220f;
+      background:linear-gradient(180deg,var(--green-bright),var(--green));
+      border:none;border-radius:14px;padding:16px;cursor:pointer;
+      transition:transform .08s ease,filter .15s ease,opacity .15s;
+      touch-action:manipulation;
+    }
+    button:active{transform:translateY(1px);}
+    button:disabled{opacity:.55;cursor:default;}
+    .hint{font-size:.82rem;color:var(--muted-2);text-align:center;margin:0;}
+
+    .toast{
+      position:fixed;left:50%;bottom:24px;transform:translate(-50%,140%);
+      background:var(--charcoal-2);border:1px solid var(--line);
+      border-left:3px solid var(--green-bright);
+      color:var(--white);padding:13px 18px;border-radius:12px;
+      box-shadow:0 12px 34px rgba(0,0,0,.45);font-size:.98rem;font-weight:600;
+      transition:transform .32s cubic-bezier(.2,.8,.3,1);z-index:10;max-width:88vw;
+    }
+    .toast.show{transform:translate(-50%,0);}
+    .toast.err{border-left-color:var(--red);}
+
+    .tally{text-align:center;color:var(--muted-2);font-size:.86rem;min-height:1.2em;margin-top:4px;}
+    .tally b{color:var(--green-bright);}
+
+    .notice{
+      background:var(--charcoal-2);border:1px solid var(--line);border-radius:var(--radius);
+      padding:22px;text-align:center;color:var(--muted);line-height:1.5;
+    }
+    .notice code{font-family:ui-monospace,Menlo,monospace;background:var(--charcoal-3);padding:2px 6px;border-radius:6px;}
+    footer{margin-top:26px;text-align:center;color:var(--muted-2);font-size:.75rem;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="kicker">APC · Applied AI Workshop</div>
+      <h1>Add an <em>Idea</em></h1>
+      <p class="sub">What slows your week down? Where do you copy-paste, wait, redo the same task, or answer the same question again? Drop it below.</p>
+    </header>
+
+    <form id="ideaForm" autocomplete="off">
+      <div>
+        <label for="text">Your idea <span class="count" id="count">0 / 280</span></label>
+        <textarea id="text" maxlength="280" required
+          placeholder="e.g. Every Monday I rebuild the same status report by hand from three systems…"></textarea>
+      </div>
+      <div>
+        <label for="name">Your name <span style="font-weight:500;color:var(--muted-2)">(optional)</span></label>
+        <input id="name" maxlength="40" placeholder="Leave blank to stay anonymous" />
+      </div>
+      <button type="submit" id="send">Add to the board →</button>
+      <p class="hint">You can add as many as you like. They appear on the screen instantly.</p>
+      <p class="tally" id="tally"></p>
+    </form>
+
+    <div class="notice" id="notice" hidden></div>
+    <footer>Live board · your entries show on the presentation screen</footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./firebase-config.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+    import { getDatabase, ref, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+
+    const cfg = window.FIREBASE_CONFIG || {};
+    const configured = cfg.apiKey && cfg.apiKey.indexOf("PASTE_") !== 0 &&
+                       cfg.databaseURL && cfg.databaseURL.indexOf("PASTE_") === -1;
+
+    const form   = document.getElementById("ideaForm");
+    const textEl = document.getElementById("text");
+    const nameEl = document.getElementById("name");
+    const sendEl = document.getElementById("send");
+    const countEl= document.getElementById("count");
+    const tally  = document.getElementById("tally");
+    const toast  = document.getElementById("toast");
+    const notice = document.getElementById("notice");
+
+    // Remember the name between submissions on this device.
+    try { nameEl.value = localStorage.getItem("ideaName") || ""; } catch (e) {}
+
+    function showToast(msg, isErr) {
+      toast.textContent = msg;
+      toast.classList.toggle("err", !!isErr);
+      toast.classList.add("show");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toast.classList.remove("show"), 2600);
+    }
+
+    textEl.addEventListener("input", () => {
+      const n = textEl.value.length;
+      countEl.textContent = n + " / 280";
+      countEl.classList.toggle("warn", n > 240);
+    });
+
+    if (!configured) {
+      form.hidden = true;
+      notice.hidden = false;
+      notice.innerHTML = "<strong>Board not switched on yet.</strong><br>The organiser still needs to paste the Firebase keys into <code>firebase-config.js</code>.";
+    } else {
+      const db = getDatabase(initializeApp(cfg));
+      const ideasRef = ref(db, "ideas");
+      let sent = 0;
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const text = textEl.value.trim();
+        const name = nameEl.value.trim();
+        if (!text) { textEl.focus(); return; }
+
+        sendEl.disabled = true;
+        sendEl.textContent = "Adding…";
+        try { localStorage.setItem("ideaName", name); } catch (e2) {}
+
+        try {
+          const entry = { text, ts: serverTimestamp() };
+          if (name) entry.name = name;
+          await push(ideasRef, entry);
+
+          sent++;
+          textEl.value = "";
+          countEl.textContent = "0 / 280";
+          countEl.classList.remove("warn");
+          tally.innerHTML = "You've added <b>" + sent + "</b> idea" + (sent === 1 ? "" : "s") + " — thank you!";
+          showToast("✓ Added to the board");
+          textEl.focus();
+        } catch (err) {
+          showToast("Couldn't send — check your connection", true);
+        } finally {
+          sendEl.disabled = false;
+          sendEl.textContent = "Add to the board →";
+        }
+      });
+    }
+  </script>
+</body>
+</html>
